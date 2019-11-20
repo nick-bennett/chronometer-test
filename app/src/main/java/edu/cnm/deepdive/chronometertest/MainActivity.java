@@ -8,17 +8,38 @@ import android.view.ViewGroup;
 import android.widget.Chronometer;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProviders;
+import edu.cnm.deepdive.chronometertest.viewmodel.MainViewModel;
 
 public class MainActivity extends AppCompatActivity {
 
+  private MainViewModel viewModel;
   private Chronometer chronometer;
   private boolean running;
-  private long pauseOffset;
+  private long accumulatedTime;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
+    viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
+    viewModel.getRunning().observe(this, (running) -> {
+      if (this.running != running) { // Change of state.
+        if (running) {
+          setTimer(accumulatedTime);
+        } else {
+          viewModel.setAccumulatedTime(getTimer());
+        }
+        this.running = running;
+        invalidateOptionsMenu();
+      }
+    });
+    viewModel.getAccumulatedTime().observe(this, (accumulatedTime) -> {
+      this.accumulatedTime = accumulatedTime;
+      if (chronometer != null) {
+        chronometer.setBase(SystemClock.elapsedRealtime() - accumulatedTime);
+      }
+    });
   }
 
   @Override
@@ -29,11 +50,11 @@ public class MainActivity extends AppCompatActivity {
     ViewGroup layout = (ViewGroup) item.getActionView();
     if (chronometer == null) {
       chronometer = layout.findViewById(R.id.chronometer);
-      resumeTimer(); // Assumes you want to start running as soon as activity is loaded.
+      setTimer(accumulatedTime, running);
     } else {
-      layout.removeView(layout.findViewById(R.id.chronometer)); // Remove inflated chronometer from new layout.
-      ((ViewGroup) chronometer.getParent()).removeView(chronometer); // Detach previously loaded chronometer from its previous layout.
-      layout.addView(chronometer); // Attach previously loaded chronometer to new layout.
+      layout.removeView(layout.findViewById(R.id.chronometer));
+      ((ViewGroup) chronometer.getParent()).removeView(chronometer);
+      layout.addView(chronometer);
     }
     return true;
   }
@@ -51,10 +72,10 @@ public class MainActivity extends AppCompatActivity {
     boolean handled = true;
     switch (item.getItemId()) {
       case R.id.play:
-        resumeTimer();
+        viewModel.setRunning(true);
         break;
       case R.id.pause:
-        pauseTimer();
+        viewModel.setRunning(false);
         break;
       default:
         handled = super.onOptionsItemSelected(item);
@@ -66,26 +87,37 @@ public class MainActivity extends AppCompatActivity {
   @Override
   protected void onPause() {
     super.onPause();
-    pauseTimer();
-  }
-
-  private void pauseTimer() {
     if (running) {
-      pauseOffset = SystemClock.elapsedRealtime() - chronometer.getBase();
-      chronometer.stop();
-      running = false;
-      invalidateOptionsMenu();
+      viewModel.setAccumulatedTime(getTimer());
     }
   }
 
-  private void resumeTimer() {
-    if (!running) {
-      chronometer.setBase(SystemClock.elapsedRealtime() - pauseOffset);
-      chronometer.start();
-      running = true;
-      invalidateOptionsMenu();
-    }
+  private long getTimer() {
+    return getTimer(true);
   }
 
+  private long getTimer(boolean stop) {
+    long offset = 0;
+    if (chronometer != null) {
+      if (stop) {
+        chronometer.stop();
+      }
+      offset = SystemClock.elapsedRealtime() - chronometer.getBase();
+    }
+    return offset;
+  }
+
+  private void setTimer(long offset) {
+    setTimer(offset, true);
+  }
+
+  private void setTimer(long offset, boolean start) {
+    if (chronometer != null) {
+      chronometer.setBase(SystemClock.elapsedRealtime() - offset);
+      if (start) {
+        chronometer.start();
+      }
+    }
+  }
 
 }
